@@ -108,7 +108,7 @@ jobs:
       - name: Check Release
         id: create-binaries
         run: |
-          gh release view ${{ env.app_version }} -R ${{ github.repository }} | grep ${{ env.app_name }}-box64-bundle-.* >/dev/null 2>&1 || echo "create=1" >> $GITHUB_OUTPUT
+          gh release view ${{ env.app_version }} -R ${{ github.repository }} | grep ${{ env.app_name }}-bundle-x86-libs.tar.gz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
