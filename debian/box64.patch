@@ -1,0 +1,20 @@
+diff --git a/debian/rules b/debian/rules
+old mode 100644
+new mode 100755
+index 61f76bd..d2fb589
+--- a/debian/rules
++++ b/debian/rules
+@@ -6,9 +6,12 @@
+ override_dh_auto_configure:
+ 	dh_auto_configure -- \
+ 	      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+-	      -DARM_DYNAREC=1 \
++	      -DBOX32=ON -DBOX32_BINFMT=ON \
+ 		  -DNOGIT=1
+ 
++override_dh_strip:
++	true
++
+ override_dh_shlibdeps:
+ 	dh_shlibdeps --exclude=libgcc_s.so.1 \
+ 	--exclude=libpng12.so.0 \
