@@ -23,7 +23,7 @@ RUN git clone --depth 1 --branch ${VERSION} https://github.com/ptitSeb/box64 ${W
 
 RUN mkdir -p build \
     && cd build \
-    && cmake .. -DCMAKE_C_COMPILER=loongarch64-unknown-linux-gnu-gcc -D LARCH64=1 -D CMAKE_BUILD_TYPE=RelWithDebInfo -D BOX32=ON -D BOX32_BINFMT=ON \
+    && cmake .. -D CMAKE_C_COMPILER=loongarch64-unknown-linux-gnu-gcc -D CMAKE_CXX_COMPILER=loongarch64-unknown-linux-gnu-g++ -D LARCH64=1 -D CMAKE_BUILD_TYPE=RelWithDebInfo -D BOX32=ON -D BOX32_BINFMT=ON \
     && make -j$(nproc)
 
 RUN mkdir -p dist \
