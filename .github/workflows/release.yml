@@ -127,34 +127,134 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-cross:
-    runs-on: ubuntu-latest
     needs: check-binaries
     env:
       app_version: ${{ needs.check-binaries.outputs.app_version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.app_version }}
-      
-      - uses: docker/setup-buildx-action@v3
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [LARCH64]
+        type: [Release, Trace, StaticBuild, Box32]
+        os: [ubuntu-latest]
 
-      - name: Check Release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: "Check release"
         id: create-binaries
         run: |
-          gh release view ${{ env.app_version }} -R ${{ github.repository }} | grep ${{ env.app_name }}-linux-loong64.tar.gz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_OUTPUT
+          gh release view ${{ env.app_version }} -R ${{ github.repository }} | grep ${{ env.app_name }}-.*.sha256 >/dev/null 2>&1 || echo "create=1" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Binaries
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: ${{ env.app_version }}
+
+      - name: "Environment preparation"
         if : steps.create-binaries.outputs.create == '1'
         run: |
-          docker buildx build --build-arg VERSION=${{ env.app_version }} -t ${{ env.app_name }}-cross-loong64:${{ env.app_version }} cross-compiler/loong64 --load
+          sudo apt-get update
+          if [[ ${{ matrix.platform }} == 'LARCH64' ]]; then
+            sudo mkdir /usr/local/larch
+            wget -O- -q https://github.com/loongson/build-tools/releases/download/2023.08.08/CLFS-loongarch64-8.1-x86_64-cross-tools-gcc-glibc.tar.xz | sudo tar -C /usr/local/larch --strip-components=1 --xz -xf -
+            sudo ln -sf /usr/local/larch/target /usr/loongarch64-linux-gnu
+            sudo cp -r /usr/local/larch/loongarch64-unknown-linux-gnu/lib/* /usr/loongarch64-linux-gnu/lib64/
+            for i in objdump objcopy strip; do
+              sudo ln -sf /usr/local/larch/bin/loongarch64-unknown-linux-gnu-$i /usr/bin/loongarch64-linux-gnu-$i
+            done
+            echo '/usr/local/larch/bin/loongarch64-unknown-linux-gnu-gcc -L/usr/local/larch/loongarch64-unknown-linux-gnu "$@"' | sudo tee /usr/bin/loongarch64-linux-gnu-gcc
+            echo '/usr/local/larch/bin/loongarch64-unknown-linux-gnu-g++ -L/usr/local/larch/loongarch64-unknown-linux-gnu "$@"' | sudo tee /usr/bin/loongarch64-linux-gnu-g++
+            sudo chmod 755 /usr/bin/loongarch64-linux-gnu-{gcc,g++}
+
+            echo BOX64_PLATFORM_MARCRO="-DLARCH64=ON" >> $GITHUB_ENV
+            echo "BOX64_COMPILER=loongarch64-linux-gnu-gcc" >> $GITHUB_ENV
+            sudo apt-get -y install git cmake make python3
+          fi
+          if [[ ${{ matrix.type }} == 'Release' ]]; then
+            echo BOX64_BUILD_TYPE=Release >> $GITHUB_ENV
+            echo BOX64_HAVE_TRACE=0 >> $GITHUB_ENV
+            echo BOX64_STATICBUILD=0 >> $GITHUB_ENV
+            echo BOX64_BOX32=0 >> $GITHUB_ENV
+          elif [[ ${{ matrix.type }} == 'StaticBuild' ]]; then
+            echo BOX64_BUILD_TYPE=Release >> $GITHUB_ENV
+            echo BOX64_HAVE_TRACE=0 >> $GITHUB_ENV
+            echo BOX64_STATICBUILD=1 >> $GITHUB_ENV
+            echo BOX64_BOX32=0 >> $GITHUB_ENV
+          elif [[ ${{ matrix.type }} == 'Box32' ]]; then
+            echo BOX64_BUILD_TYPE=Release >> $GITHUB_ENV
+            echo BOX64_HAVE_TRACE=0 >> $GITHUB_ENV
+            echo BOX64_STATICBUILD=0 >> $GITHUB_ENV
+            echo BOX64_BOX32=1 >> $GITHUB_ENV
+          else
+            echo BOX64_BUILD_TYPE=RelWithDebInfo >> $GITHUB_ENV
+            echo BOX64_HAVE_TRACE=1 >> $GITHUB_ENV
+            echo BOX64_STATICBUILD=0 >> $GITHUB_ENV
+            echo BOX64_BOX32=0 >> $GITHUB_ENV
+          fi
+
+      - name: "Display Build info"
+        if : steps.create-binaries.outputs.create == '1'
+        run: |
+          echo "CMake Platform Macro: ${{ env.BOX64_PLATFORM_MARCRO }}"
+          echo "CMake C Compiler: ${{ env.BOX64_COMPILER }}"
+          echo "Build type: ${{ env.BOX64_BUILD_TYPE }}"
+          echo "Trace Enabled: ${{ env.BOX64_HAVE_TRACE }}"
+          echo "StaticBuild Enabled: ${{ env.BOX64_STATICBUILD }}"
+          echo "Box32 Enabled: ${{ env.BOX64_BOX32 }}"
+
+      - name: "Build Box64"
+        if : steps.create-binaries.outputs.create == '1'
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_C_COMPILER=${{ env.BOX64_COMPILER }}\
+                   -DTERMUX=${{ env.IS_TERMUX }}\
+                   ${{ env.BOX64_PLATFORM_MARCRO }}\
+                   -DCMAKE_BUILD_TYPE=${{ env.BOX64_BUILD_TYPE }}\
+                   -DHAVE_TRACE=${{ env.BOX64_HAVE_TRACE }}\
+                   -DSTATICBUILD=${{ env.BOX64_STATICBUILD }}\
+                   -DBOX32=${{ env.BOX64_BOX32 }}\
+                   -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON\
+                   -DCI=${{ matrix.platform != 'ANDROID' }}
+          make -j$(nproc) VERBOSE=1
+
+      - name: "Test Box64"
+        if : steps.create-binaries.outputs.create == '1'
+        run: |
+          if [[ ${{ matrix.platform }} != 'X64' ]]; then
+            mkdir qemu9
+            wget -O- -q https://archive.archlinux.org/packages/q/qemu-user-static/qemu-user-static-9.0.2-1-x86_64.pkg.tar.zst | tar -I zstd -C qemu9 -xf -
+            sudo cp qemu9/usr/bin/* /usr/bin/
+          fi
+
+          cd build
+          export CTEST_OPTIONS="-j$(nproc) --timeout 120 --output-on-failure --repeat until-pass:20"
+          if [[ ${{ matrix.platform }} == 'LARCH64' ]]; then
+            export INTERPRETER=qemu-loongarch64-static
+            export QEMU_LD_PREFIX=/usr/loongarch64-linux-gnu/
+
+            BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
+            BOX64_DYNAREC=0 ctest $CTEST_OPTIONS -E nocosim
+
+            BOX64_DYNAREC_TEST=1 BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
+          elif [[ ${{matrix.type}} == 'Box32' ]]; then
+            ctest $CTEST_OPTIONS
+          else
+            ctest -j$(nproc)
+          fi
 
       - name: Upgrade Release
         if : steps.create-binaries.outputs.create == '1'
         run: |
-          docker run --rm -v $(pwd)/dist:/dist ${{ env.app_name }}-cross-loong64:${{ env.app_version }}
-          ls -al dist
-          gh release upload ${{ env.app_version }} -R ${{ github.repository }} dist/*
+          mkdir -p dist
+          mv build/box64 dist/box64
+          cd dist
+          tar -czf box64-${{ matrix.platform }}-${{ matrix.type }}.tar.gz box64
+          sha256sum box64-${{ matrix.platform }}-${{ matrix.type }}.tar.gz > box64-${{ matrix.platform }}-${{ matrix.type }}.sha256
+          mv box64 box64-${{ matrix.platform }}-${{ matrix.type }}
+          ls -al
+          gh release upload ${{ env.app_version }} -R ${{ github.repository }} ./*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
