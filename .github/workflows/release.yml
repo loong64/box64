@@ -136,6 +136,9 @@ jobs:
         platform: [LARCH64]
         type: [Release, Trace, StaticBuild, Box32]
         os: [ubuntu-latest]
+        exclude:
+          - platform: LARCH64
+            type: Trace
 
     runs-on: ${{ matrix.os }}
     steps:
