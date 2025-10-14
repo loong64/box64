@@ -158,7 +158,7 @@ jobs:
           sudo apt-get update
           if [[ ${{ matrix.platform }} == 'LARCH64' ]]; then
             sudo mkdir /usr/local/larch
-            wget -O- -q https://github.com/loongson/build-tools/releases/download/2023.08.08/CLFS-loongarch64-8.1-x86_64-cross-tools-gcc-glibc.tar.xz | sudo tar -C /usr/local/larch --strip-components=1 --xz -xf -
+            wget -O- -q https://github.com/loongson/build-tools/releases/download/2025.02.21/x86_64-cross-tools-loongarch64-binutils_2.44-gcc_14.2.0-glibc_2.41.tar.xz | sudo tar -C /usr/local/larch --strip-components=1 --xz -xf -
             sudo ln -sf /usr/local/larch/target /usr/loongarch64-linux-gnu
             sudo cp -r /usr/local/larch/loongarch64-unknown-linux-gnu/lib/* /usr/loongarch64-linux-gnu/lib64/
             for i in objdump objcopy strip; do
@@ -170,7 +170,7 @@ jobs:
 
             echo BOX64_PLATFORM_MARCRO="-DLARCH64=ON" >> $GITHUB_ENV
             echo "BOX64_COMPILER=loongarch64-linux-gnu-gcc" >> $GITHUB_ENV
-            sudo apt-get -y install git cmake make python3
+            sudo apt-get -y install git cmake make python3 libzydis-dev
           fi
           if [[ ${{ matrix.type }} == 'Release' ]]; then
             echo BOX64_BUILD_TYPE=Release >> $GITHUB_ENV
@@ -193,6 +193,7 @@ jobs:
             echo BOX64_STATICBUILD=0 >> $GITHUB_ENV
             echo BOX64_BOX32=0 >> $GITHUB_ENV
           fi
+          echo "BOX64_ZYDIS3=0" >> $GITHUB_ENV
 
       - name: "Display Build info"
         if : steps.create-binaries.outputs.create == '1'
@@ -214,6 +215,7 @@ jobs:
                    ${{ env.BOX64_PLATFORM_MARCRO }}\
                    -DCMAKE_BUILD_TYPE=${{ env.BOX64_BUILD_TYPE }}\
                    -DHAVE_TRACE=${{ env.BOX64_HAVE_TRACE }}\
+                   -DZYDIS3=${{ env.BOX64_ZYDIS3 }}\
                    -DSTATICBUILD=${{ env.BOX64_STATICBUILD }}\
                    -DBOX32=${{ env.BOX64_BOX32 }}\
                    -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON\
@@ -224,20 +226,25 @@ jobs:
         if : steps.create-binaries.outputs.create == '1'
         run: |
           if [[ ${{ matrix.platform }} != 'X64' ]]; then
-            mkdir qemu9
-            wget -O- -q https://archive.archlinux.org/packages/q/qemu-user-static/qemu-user-static-9.0.2-1-x86_64.pkg.tar.zst | tar -I zstd -C qemu9 -xf -
-            sudo cp qemu9/usr/bin/* /usr/bin/
+            mkdir qemu10
+            wget -O- -q https://archive.archlinux.org/packages/q/qemu-user-static/qemu-user-static-10.0.0-7-x86_64.pkg.tar.zst  | tar -I zstd -C qemu10 -xf -
+            sudo cp qemu10/usr/bin/* /usr/bin/
           fi
 
           cd build
-          export CTEST_OPTIONS="-j$(nproc) --timeout 120 --output-on-failure --repeat until-pass:20"
+          export CTEST_OPTIONS="-j$(nproc) --timeout 300 --output-on-failure --repeat until-pass:20"
           if [[ ${{ matrix.platform }} == 'LARCH64' ]]; then
             export INTERPRETER=qemu-loongarch64-static
             export QEMU_LD_PREFIX=/usr/loongarch64-linux-gnu/
 
+            if [[ ${{ env.BOX64_BOX32 }} == '1' ]]; then
+              export BOX32_PERSONA32BITS=1 # hack to disable personality setting
+            fi
+            ctest $CTEST_OPTIONS -E nocosim
             BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
             BOX64_DYNAREC=0 ctest $CTEST_OPTIONS -E nocosim
 
+            BOX64_DYNAREC_TEST=1 ctest $CTEST_OPTIONS -E nocosim
             BOX64_DYNAREC_TEST=1 BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
           elif [[ ${{matrix.type}} == 'Box32' ]]; then
             ctest $CTEST_OPTIONS

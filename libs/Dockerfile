@@ -1,7 +1,7 @@
 FROM almalinux:9 AS builde-bundle
 ARG TARGETARCH
 
-RUN dnf install -y rpm-build git dnf-plugins-core zstd
+RUN dnf install -y rpm-build git dnf-plugins-core which zstd
 
 ARG VERSION
 ARG WORKDIR=/opt/box64
