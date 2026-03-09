@@ -11,12 +11,11 @@ env:
   
 jobs:
   check-binaries:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       app_version: ${{ steps.get-version.outputs.app_version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
 
       - name: Get Version
         id: get-version
@@ -244,11 +243,11 @@ jobs:
               export BOX32_PERSONA32BITS=1 # hack to disable personality setting
             fi
             ctest $CTEST_OPTIONS -E nocosim
-            BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
+            BOX64_DYNAREC_NOHOSTEXT=1 ctest $CTEST_OPTIONS -E nocosim
             BOX64_DYNAREC=0 ctest $CTEST_OPTIONS -E nocosim
 
             BOX64_DYNAREC_TEST=1 ctest $CTEST_OPTIONS -E nocosim
-            BOX64_DYNAREC_TEST=1 BOX64_DYNAREC_LA64NOEXT=1 ctest $CTEST_OPTIONS -E nocosim
+            BOX64_DYNAREC_TEST=1 BOX64_DYNAREC_NOHOSTEXT=1 ctest $CTEST_OPTIONS -E nocosim
           elif [[ ${{matrix.type}} == 'Box32' ]]; then
             ctest $CTEST_OPTIONS
           else

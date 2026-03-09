@@ -1,18 +1,18 @@
 diff --git a/debian/rules b/debian/rules
-index 61f76bd..487c983 100644
+index 9ec22bc..46c4c33 100755
 --- a/debian/rules
 +++ b/debian/rules
-@@ -6,9 +6,12 @@
- override_dh_auto_configure:
+@@ -23,6 +23,13 @@ else ifeq ($(DEB_HOST_ARCH),aarch64)
+ 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+ 		-DARM_DYNAREC=1 \
+ 		-DNOGIT=1
++else ifeq ($(DEB_HOST_ARCH),loong64)
++	dh_auto_configure -- \
++		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
++		-DLARCH64=1 \
++		-DLARCH64_DYNAREC=1 \
++		-DBOX32=ON -DBOX32_BINFMT=ON \
++		-DNOGIT=1
+ else
  	dh_auto_configure -- \
- 	      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
--	      -DARM_DYNAREC=1 \
-+	      -DLARCH64=1 -DBOX32=ON -DBOX32_BINFMT=ON \
- 		  -DNOGIT=1
- 
-+override_dh_strip:
-+	true
-+
- override_dh_shlibdeps:
- 	dh_shlibdeps --exclude=libgcc_s.so.1 \
- 	--exclude=libpng12.so.0 \
+ 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
